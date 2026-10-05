@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill Launcher</title>
+<style>
+  :root {
+    --bg: #faf9f6; --fg: #1f1e1b; --muted: #6b6860; --card: #ffffff;
+    --line: #e4e1d8; --accent: #c15f3c; --accent-fg: #ffffff; --ok: #2f7d4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1b1a18; --fg: #ece9e1; --muted: #a29e94; --card: #252421;
+            --line: #3a3833; --accent: #d97757; --accent-fg: #1b1a18; --ok: #6cc28f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 24px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+  .card h2 { font-size: 1rem; margin: 0; }
+  .card code { font-size: .85rem; color: var(--muted); word-break: break-all; }
+  .card p { margin: 0; font-size: .9rem; color: var(--muted); flex: 1; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button, a.btn { font: inherit; font-size: .9rem; border-radius: 8px; padding: 7px 12px;
+          border: 1px solid var(--line); background: transparent; color: var(--fg);
+          cursor: pointer; text-decoration: none; }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  #status { position: sticky; top: 0; margin: 0 0 20px; padding: 12px 14px; border-radius: 10px;
+            background: var(--card); border: 1px solid var(--line); display: none; }
+  #status.show { display: block; }
+  #status strong { color: var(--ok); }
+  details { margin-top: 32px; color: var(--muted); }
+  details summary { cursor: pointer; color: var(--fg); }
+  kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px;
+        padding: 0 5px; font-size: .85em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Skill Launcher</h1>
+  <p class="lead">Click a skill. Its command is copied, the target page opens if it has one, then open Claude in Chrome and paste.</p>
+
+  <div id="status" role="status" aria-live="polite"></div>
+  <div class="grid" id="grid"></div>
+
+  <details>
+    <summary>How the link format works</summary>
+    <p><code>?skill=start</code> highlights one skill so a bookmark lands on it. <code>?text=/my-shortcut%20extra%20words</code> builds a one-off card with any command. <code>&amp;open=https://...</code> adds a page to open before you run it. Chrome only lets a page write to the clipboard after a click, so one click is always required.</p>
+    <p>Set a keyboard shortcut for the extension at <code>chrome://extensions/shortcuts</code> so opening the side panel is one keystroke instead of a trip to the toolbar.</p>
+  </details>
+</main>
+
+<script>
+  // Edit this list to add or rename skills. `command` is exactly what you would type in the side panel.
+  const SKILLS = [
+    { id: "start", name: "Start of day", command: "/start", note: "Opens daily tabs and runs the morning checks." },
+    { id: "fte-report", name: "FTE report", command: "/fte-report", note: "Zero-credit FTE totals from a Conclusive Systems CSV." },
+    { id: "ir-request", name: "IR data request", command: "/ir-request-form-filler", note: "Fills the Institutional Research request form." },
+    { id: "psc", name: "PSC form", command: "/psc-form-filler", note: "Personal Services Contract Jotform, stops before Submit." },
+    { id: "course-request", name: "Course request", command: "/course-request-form-filler", note: "Google Course Request Form, stops before Next." },
+    { id: "hr-matrix", name: "HR matrix", command: "/hr-matrix-filler", note: "Scores candidates in the SharePoint workbook." }
+  ];
+
+  const params = new URLSearchParams(location.search);
+  const wanted = params.get("skill");
+  const custom = params.get("text");
+  const openUrl = params.get("open");
+  if (custom) SKILLS.unshift({ id: "_custom", name: "From link", command: custom, note: "Command passed in the URL.", open: openUrl });
+  else if (openUrl && wanted) SKILLS.forEach(s => { if (s.id === wanted) s.open = openUrl; });
+
+  const grid = document.getElementById("grid");
+  const status = document.getElementById("status");
+
+  function safeHttp(u) {
+    try { const x = new URL(u); return (x.protocol === "https:" || x.protocol === "http:") ? x.href : null; }
+    catch { return null; }
+  }
+
+  async function run(skill) {
+    let copied = false;
+    try { await navigator.clipboard.writeText(skill.command); copied = true; } catch {}
+    const target = skill.open && safeHttp(skill.open);
+    if (target) window.open(target, "_blank", "noopener");
+    status.innerHTML = (copied ? "<strong>Copied</strong> " : "Copy failed, select it by hand: ") +
+      "<code></code><br>Open Claude in Chrome (toolbar icon or your shortcut), paste with <kbd>Ctrl</kbd>+<kbd>V</kbd> or <kbd>⌘</kbd>+<kbd>V</kbd>, press Enter.";
+    status.querySelector("code").textContent = skill.command;
+    status.classList.add("show");
+  }
+
+  for (const s of SKILLS) {
+    const card = document.createElement("div");
+    card.className = "card" + ((s.id === wanted || s.id === "_custom") ? " selected" : "");
+    card.innerHTML = '<h2></h2><code></code><p></p><div class="row"><button class="primary">Copy &amp; go</button><a class="btn" target="_blank" rel="noopener">claude.ai</a></div>';
+    card.querySelector("h2").textContent = s.name;
+    card.querySelector("code").textContent = s.command;
+    card.querySelector("p").textContent = s.note;
+    card.querySelector("button").addEventListener("click", () => run(s));
+    card.querySelector("a").href = "https://claude.ai/new?q=" + encodeURIComponent(s.command);
+    grid.appendChild(card);
+    if (s.id === wanted || s.id === "_custom") setTimeout(() => card.scrollIntoView({ block: "center" }), 0);
+  }
+</script>
+</body>
+</html>
