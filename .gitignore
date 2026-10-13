@@ -1,0 +1,8 @@
+__pycache__/
+# Student records (FERPA) and generated worksheets never go into git.
+agent/audits/
+agent/worksheets/
+agent/workspace/
+# Library documents may be licensed or internal; add them deliberately if at all.
+agent/library/*
+!agent/library/README.md
